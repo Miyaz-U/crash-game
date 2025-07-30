@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crypto Crash Game</title>
+  <style>
+    body {
+      background-color: #0d1117;
+      color: #e6edf3;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 30px;
+    }
+    h1 {
+      color: #58a6ff;
+    }
+    .price, .multiplier, .log {
+      margin-top: 20px;
+      font-size: 1.2rem;
+    }
+    .multiplier {
+      font-size: 2rem;
+      font-weight: bold;
+      color: #2ea043;
+    }
+    .buttons {
+      margin-top: 20px;
+    }
+    button {
+      background-color: #238636;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      margin: 10px;
+      font-size: 1rem;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+    button:hover {
+      background-color: #2ea043;
+    }
+    pre {
+      text-align: left;
+      background-color: #161b22;
+      padding: 15px;
+      border-radius: 8px;
+      max-height: 300px;
+      overflow-y: scroll;
+    }
+  </style>
+</head>
+<body>
+  <h1>💥 Crypto Crash Game</h1>
+  <div class="price" id="btc">Loading BTC Price...</div>
+  <div class="multiplier" id="multiplier">Waiting...</div>
+
+  <div class="buttons">
+    <button id="betBtn">💰 Place Bet ₹100</button>
+    <button id="cashOutBtn">💸 Cash Out</button>
+  </div>
+
+  <pre id="log"></pre>
+
+  <script>
+    const log = document.getElementById("log");
+    const btcDisplay = document.getElementById("btc");
+    const multiplierDisplay = document.getElementById("multiplier");
+    const betBtn = document.getElementById("betBtn");
+    const cashOutBtn = document.getElementById("cashOutBtn");
+
+    let hasBet = false;
+    let autoCashOutAt = 2.0;
+
+    const socket = new WebSocket("ws://localhost:5000");
+
+    socket.onopen = () => {
+      logMessage("✅ Connected to Crash Game WebSocket");
+    };
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.type === 'btc_price') {
+        btcDisplay.textContent = `💰 BTC Price: ₹${data.inr.toLocaleString()}`;
+      }
+      if (data.type === 'multiplier') {
+        multiplierDisplay.textContent = `${data.value.toFixed(2)}x`;
+        if (hasBet && data.value >= autoCashOutAt) {
+          socket.send(JSON.stringify({ type: 'cash_out' }));
+          hasBet = false;
+        }
+      }
+      if (data.type === 'start') {
+        multiplierDisplay.textContent = `1.00x`;
+        logMessage("🚀 New round started! Crash Point: " + data.crashPoint);
+        hasBet = false;
+      }
+      if (data.type === 'crash') {
+        multiplierDisplay.textContent = `💥 Crashed at ${data.at.toFixed(2)}x`;
+      }
+      if (data.type === 'cashed_out') {
+        logMessage("🤑 " + data.message);
+      }
+      if (data.type === 'lost') {
+        logMessage("😢 " + data.message);
+      }
+      if (data.message && data.type !== 'btc_price') {
+        logMessage(`📡 ${data.message}`);
+      }
+    };
+
+    socket.onerror = () => logMessage("❌ WebSocket error");
+    socket.onclose = () => logMessage("🔌 Connection closed");
+
+    betBtn.onclick = () => {
+      if (hasBet) return logMessage("⚠️ You already placed a bet.");
+      socket.send(JSON.stringify({ type: 'place_bet', username: 'miyaz', amount: 100 }));
+      hasBet = true;
+      logMessage("🎯 Bet placed: ₹100");
+    };
+
+    cashOutBtn.onclick = () => {
+      if (!hasBet) return logMessage("⚠️ No active bet to cash out.");
+      socket.send(JSON.stringify({ type: 'cash_out' }));
+      hasBet = false;
+      logMessage("💸 Manual cash out attempted.");
+    };
+
+    function logMessage(message) {
+      log.textContent += message + "\n";
+      log.scrollTop = log.scrollHeight;
+    }
+  </script>
+</body>
+</html>
